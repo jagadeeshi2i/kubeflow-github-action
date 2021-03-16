@@ -69,7 +69,7 @@ class Client(object):
     KUBE_PROXY_PATH = 'api/v1/namespaces/{}/services/ml-pipeline:http/proxy/'
 
     # TODO: Wrap the configurations for different authentication methods.
-    def __init__(self, host=None, client_id=None, namespace='kubeflow', other_client_id=None, other_client_secret=None):
+    def __init__(self, host=None, client_id=None, namespace='kubeflow', other_client_id=None, other_client_secret=None, cookies=None):
         """Create a new instance of kfp client.
         Args:
           host: the host name to use to talk to Kubeflow Pipelines. If not set, the in-cluster
@@ -88,7 +88,7 @@ class Client(object):
         host = host or os.environ.get(KF_PIPELINES_ENDPOINT_ENV)
         self._uihost = os.environ.get(KF_PIPELINES_UI_ENDPOINT_ENV, host)
         config = self._load_config(
-            host, client_id, namespace, other_client_id, other_client_secret)
+            host, client_id, namespace, other_client_id, other_client_secret, cookies)
         api_client = kfp_server_api.api_client.ApiClient(config)
         _add_generated_apis(self, kfp_server_api, api_client)
 
@@ -103,7 +103,7 @@ class Client(object):
         self._upload_api = kfp_server_api.api.PipelineUploadServiceApi(
             api_client)
 
-    def _load_config(self, host, client_id, namespace, other_client_id, other_client_secret):
+    def _load_config(self, host, client_id, namespace, other_client_id, other_client_secret, cookies):
         config = kfp_server_api.configuration.Configuration()
         if host:
             config.host = host

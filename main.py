@@ -2,7 +2,7 @@ import os
 import yaml
 import kfp
 import kfp.compiler as compiler
-import click
+import requests
 import importlib.util
 import logging
 import sys
@@ -10,6 +10,22 @@ from datetime import datetime
 
 
 logging.basicConfig(stream=sys.stdout, level=logging.INFO)
+
+def get_user_auth_session_cookie(url, username, password):
+  response = requests.get(url)
+
+  # auth request to kfp server with istio dex look like '/dex/auth/local?req=REQ_VALUE'
+  if 'auth' in response.url:
+      credentials = {'login': username, 'password': password}
+
+      # Authenticate user
+      session = requests.Session()
+      session.post(response.url, data=credentials)
+      cookie_auth_key = 'authservice_session'
+      cookie_auth_value = session.cookies.get(cookie_auth_key)
+
+      if cookie_auth_value:
+          return cookie_auth_key + '=' + cookie_auth_value
 
 
 def load_function(pipeline_function_name: str, full_path_to_pipeline: str) -> object:
@@ -51,7 +67,7 @@ def pipeline_compile(pipeline_function: object) -> str:
     return pipeline_name_zip
 
 
-def upload_pipeline(pipeline_name_zip: str, pipeline_name: str, kubeflow_url: str, client_id: str):
+def upload_pipeline(pipeline_name_zip: str, pipeline_name: str, kubeflow_url: str, cookie: str):
     """Function to upload pipeline to kubeflow. 
 
     Arguments:
@@ -60,7 +76,7 @@ def upload_pipeline(pipeline_name_zip: str, pipeline_name: str, kubeflow_url: st
     """
     client = kfp.Client(
         host=kubeflow_url,
-        client_id=client_id,
+        cookies=cookie,
     )
     client.upload_pipeline(
         pipeline_package_path=pipeline_name_zip,
@@ -173,7 +189,6 @@ def run_pipeline(client: kfp.Client, pipeline_name: str, pipeline_id: str, pipel
 def main():
     logging.info(
         "Started the process to compile and upload the pipeline to kubeflow.")
-    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = os.environ["INPUT_GOOGLE_APPLICATION_CREDENTIALS"]
     pipeline_function = load_function(pipeline_function_name=os.environ['INPUT_PIPELINE_FUNCTION_NAME'],
                                       full_path_to_pipeline=os.environ['INPUT_PIPELINE_CODE_PATH'])
     logging.info("The value of the VERSION_GITHUB_SHA is: {}".format(
@@ -185,10 +200,11 @@ def main():
     pipeline_name_zip = pipeline_compile(pipeline_function=pipeline_function)
     pipeline_name = os.environ['INPUT_PIPELINE_FUNCTION_NAME'] + \
         "_" + os.environ["GITHUB_SHA"]
+    cookie = get_user_auth_session_cookie(os.environ['INPUT_KUBEFLOW_URL'],os.environ["KUBEFLOW_USERNAME"], os.environ["KUBEFLOW_PASSWORD"])
     client = upload_pipeline(pipeline_name_zip=pipeline_name_zip,
                              pipeline_name=pipeline_name,
                              kubeflow_url=os.environ['INPUT_KUBEFLOW_URL'],
-                             client_id=os.environ["INPUT_CLIENT_ID"])
+                             cookie=cookie)
     logging.info(os.getenv("INPUT_RUN_PIPELINE"))
     logging.info(os.environ["INPUT_EXPERIMENT_NAME"])
     if os.getenv("INPUT_RUN_PIPELINE") == "true" and os.environ["INPUT_EXPERIMENT_NAME"]:
