@@ -5,6 +5,15 @@ inputs:
   KUBEFLOW_URL:
     description: The endpoint where your Kubeflow UI is running. 
     required: true
+  KUBEFLOW_USERNAME:
+    description: The username for Kubeflow login. 
+    required: true
+  KUBEFLOW_PASSWORD: 
+    description: The password for Kubeflow login. 
+    required: true
+  PIPELINE_NAMESPACE: 
+      description: The namespace in which the pipeline should run
+      required: false
   PIPELINE_CODE_PATH:
     description: The full path name including the filename of the python file that describes the pipeline you want to run on Kubeflow.  This should be relative to the root of the GitHub repository where the Action is triggered.
     require: true
@@ -14,14 +23,14 @@ inputs:
   EXPERIMENT_NAME: 
     description: The name of the experiment name within which the kubeflow experiment should run
     required: false
-  PIPELINE_NAMESPACE: 
-    description: The namespace in which the pipeline should run
-    required: false
   RUN_PIPELINE: 
     description: Should github action also trigger the pipeline
     required: false
   VERSION_GITHUB_SHA: 
     description: Should github action also trigger the pipeline
+    required: false
+  PIPELINE_PARAMETERS_PATH:
+    description: The full path of including parameters file
     required: false
 outputs:
   WORKFLOW_URL:

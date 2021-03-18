@@ -67,7 +67,7 @@ def pipeline_compile(pipeline_function: object) -> str:
     return pipeline_name_zip
 
 
-def upload_pipeline(pipeline_name_zip: str, pipeline_name: str, kubeflow_url: str, cookie: str):
+def upload_pipeline(pipeline_name_zip: str, pipeline_name: str, kubeflow_url: str, cookies: str):
     """Function to upload pipeline to kubeflow. 
 
     Arguments:
@@ -76,7 +76,7 @@ def upload_pipeline(pipeline_name_zip: str, pipeline_name: str, kubeflow_url: st
     """
     client = kfp.Client(
         host=kubeflow_url,
-        cookies=cookie,
+        cookies=cookies
     )
     client.upload_pipeline(
         pipeline_package_path=pipeline_name_zip,
@@ -114,7 +114,7 @@ def find_pipeline_id(pipeline_name: str, client: kfp.Client, page_size: str = 10
             break
 
 
-def find_experiment_id(experiment_name: str, client: kfp.Client, page_size: int = 100, page_token: str = "") -> str:
+def find_experiment_id(experiment_name: str, client: kfp.Client, page_size: int = 100, page_token: str = "", namespace: str="admin") -> str:
     """Function to return the experiment id
 
     Arguments:
@@ -124,9 +124,10 @@ def find_experiment_id(experiment_name: str, client: kfp.Client, page_size: int 
     Returns:
         str -- The experiment id
     """
+    print(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>", namespace)
     while True:
         experiments = client.list_experiments(
-            page_size=page_size, page_token=page_token)
+            page_size=page_size, page_token=page_token, namespace=namespace)
         for experiments in experiments.experiments:
             if experiments.name == experiment_name:
                 logging.info("Succesfully collected the experiment id")
@@ -136,7 +137,7 @@ def find_experiment_id(experiment_name: str, client: kfp.Client, page_size: int 
         # If no next tooken break
         if not page_token:
             logging.info(
-                f"Could not find the pipeline id, is the experiment name: {experiments_name} correct? ")
+                f"Could not find the pipeline id, is the experiment name: {experiment_name} correct? ")
             break
 
 
@@ -156,16 +157,20 @@ def read_pipeline_params(pipeline_paramters_path: str) -> dict:
 
 
 def run_pipeline(client: kfp.Client, pipeline_name: str, pipeline_id: str, pipeline_paramters_path: dict):
+    for k, v in os.environ.items():
+        print(f'{k}={v}')
+    namespace = None
+    print("<<<<<<<<<<<<<<<<Check env namespace>>>>>>>>>>>>>>",os.environ["INPUT_PIPELINE_NAMESPACE"])
+    if (os.environ["INPUT_PIPELINE_NAMESPACE"] != None) and (str.isspace(os.environ["INPUT_PIPELINE_NAMESPACE"]) == False) and os.environ["INPUT_PIPELINE_NAMESPACE"]:
+        namespace = os.environ["INPUT_PIPELINE_NAMESPACE"]
+        print("<<<<<<<<<<<<<<<<namespace variable>>>>>>>>>>>>>>",namespace)
+        logging.info(f"The namespace that will be used is: {namespace}")
     experiment_id = find_experiment_id(
-        experiment_name=os.environ["INPUT_EXPERIMENT_NAME"], client=client)
+        experiment_name=os.environ["INPUT_EXPERIMENT_NAME"], client=client, namespace=namespace)
     if not experiment_id:
         raise ValueError("Failed to find experiment with the name: {}".format(
             os.environ["INPUT_EXPERIMENT_NAME"]))
     logging.info(f"The expriment id is: {experiment_id}")
-    namespace = None
-    if (os.getenv("INPUT_PIPELINE_NAMESPACE") != None) and (str.isspace(os.getenv("INPUT_PIPELINE_NAMESPACE")) == False) and os.getenv("INPUT_PIPELINE_NAMESPACE"):
-        namespace = os.environ["INPUT_PIPELINE_NAMESPACE"]
-        logging.info(f"The namespace that will be used is: {namespace}")
     # [TODO] What would be a good way to name the jobs
     job_name = pipeline_name + datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
     logging.info(f"The job name is: {job_name}")
@@ -180,8 +185,7 @@ def run_pipeline(client: kfp.Client, pipeline_name: str, pipeline_id: str, pipel
         job_name=job_name,
         # Read this as a yaml, people seam to prefer that to json.
         params=pipeline_params,
-        pipeline_id=pipeline_id,
-        namespace=namespace)
+        pipeline_id=pipeline_id)
     logging.info(
         "Successfully started the pipeline, head over to kubeflow to check it out")
 
@@ -189,6 +193,7 @@ def run_pipeline(client: kfp.Client, pipeline_name: str, pipeline_id: str, pipel
 def main():
     logging.info(
         "Started the process to compile and upload the pipeline to kubeflow.")
+    print(">>>>>>>>>>>>>>>>>func name:", os.environ['INPUT_PIPELINE_FUNCTION_NAME'])
     pipeline_function = load_function(pipeline_function_name=os.environ['INPUT_PIPELINE_FUNCTION_NAME'],
                                       full_path_to_pipeline=os.environ['INPUT_PIPELINE_CODE_PATH'])
     logging.info("The value of the VERSION_GITHUB_SHA is: {}".format(
@@ -196,18 +201,18 @@ def main():
     if os.environ["INPUT_VERSION_GITHUB_SHA"] == "true":
         logging.info("Versioned pipeline components")
         pipeline_function = pipeline_function(
-            github_sha=os.environ["GITHUB_SHA"])
+            github_sha=os.environ["INPUT_GITHUB_SHA"])
     pipeline_name_zip = pipeline_compile(pipeline_function=pipeline_function)
     pipeline_name = os.environ['INPUT_PIPELINE_FUNCTION_NAME'] + \
         "_" + os.environ["GITHUB_SHA"]
-    cookie = get_user_auth_session_cookie(os.environ['INPUT_KUBEFLOW_URL'],os.environ["KUBEFLOW_USERNAME"], os.environ["KUBEFLOW_PASSWORD"])
+    cookies = get_user_auth_session_cookie(os.environ['INPUT_KUBEFLOW_URL'],os.environ["INPUT_KUBEFLOW_USERNAME"], os.environ["INPUT_KUBEFLOW_PASSWORD"])
     client = upload_pipeline(pipeline_name_zip=pipeline_name_zip,
                              pipeline_name=pipeline_name,
                              kubeflow_url=os.environ['INPUT_KUBEFLOW_URL'],
-                             cookie=cookie)
-    logging.info(os.getenv("INPUT_RUN_PIPELINE"))
+                             cookies=cookies)
+    logging.info(os.environ["INPUT_RUN_PIPELINE"])
     logging.info(os.environ["INPUT_EXPERIMENT_NAME"])
-    if os.getenv("INPUT_RUN_PIPELINE") == "true" and os.environ["INPUT_EXPERIMENT_NAME"]:
+    if os.environ["INPUT_RUN_PIPELINE"] == "true" and os.environ["INPUT_EXPERIMENT_NAME"]:
         logging.info("Started the process to run the pipeline on kubeflow.")
         pipeline_id = find_pipeline_id(pipeline_name=pipeline_name,
                                        client=client)
